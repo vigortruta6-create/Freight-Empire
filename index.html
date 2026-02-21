@@ -4,189 +4,188 @@ index.html
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Freight Empire</title>
+<title>Freight Empire Simulator PRO</title>
 
 <style>
-body {
-    margin:0;
-    font-family:Arial, sans-serif;
-    background:#0f172a;
-    color:white;
-    text-align:center;
+body{
+  margin:0;
+  font-family:Arial;
+  background:#0f172a;
+  color:white;
+  text-align:center;
 }
-header {
-    background:#1e293b;
-    padding:15px;
-    font-size:22px;
-    font-weight:bold;
+
+header{
+  background:#1e293b;
+  padding:15px;
+  font-size:22px;
+  font-weight:bold;
 }
-.container { padding:20px; }
-.card {
-    background:#1e293b;
-    margin:15px;
-    padding:20px;
-    border-radius:12px;
+
+.stats{
+  display:flex;
+  justify-content:space-around;
+  padding:10px;
+  background:#111827;
+  font-size:14px;
 }
-button {
-    padding:12px;
-    width:100%;
-    border:none;
-    border-radius:8px;
-    margin-top:10px;
-    font-size:16px;
+
+button{
+  padding:8px 15px;
+  margin:5px;
+  border:none;
+  border-radius:5px;
+  cursor:pointer;
+  font-weight:bold;
 }
-.primary { background:#22c55e; color:black; }
-.upgrade { background:#3b82f6; color:white; }
-.prestige { background:#a855f7; color:white; }
-.chest { background:#f59e0b; color:black; }
-.vip { background:#ef4444; color:white; }
-.stats { font-size:18px; margin:15px 0; }
+
+.green{background:#22c55e;}
+.orange{background:#f59e0b;}
+.blue{background:#3b82f6;}
+.red{background:#ef4444;}
+
+#log{
+  margin-top:10px;
+  height:80px;
+  overflow:auto;
+  background:#111827;
+  padding:5px;
+  font-size:13px;
+}
+
+.city{
+  display:inline-block;
+  padding:8px;
+  margin:5px;
+  background:#1e293b;
+  border-radius:5px;
+  cursor:pointer;
+}
+
+.city:hover{
+  background:#334155;
+}
 </style>
 </head>
 
 <body>
 
-<header>🚛 Freight Empire</header>
-
-<div class="container">
+<header>🚛 Freight Empire Simulator PRO</header>
 
 <div class="stats">
-💰 Dinheiro: R$ <span id="money">0</span><br>
-📈 Nível: <span id="level">1</span><br>
-⭐ Prestígio: <span id="prestigeBonus">1.0x</span><br>
-⚡ Renda/s: <span id="incomePS">1</span>
+<div>💰 R$ <span id="money">0</span></div>
+<div>⛽ <span id="fuel">0</span>%</div>
+<div>⭐ Nível <span id="level">1</span></div>
+<div>XP <span id="xp">0</span>/100</div>
 </div>
 
-<div class="card">
-<button class="primary" onclick="manualIncome()">Trabalhar Agora</button>
-<button onclick="watchAd()">Multiplicador 2x (30s)</button>
+<h3>Escolha destino:</h3>
+<div id="cities"></div>
+
+<div>
+<button class="green" onclick="makeDelivery()">Fazer Entrega</button>
+<button class="orange" onclick="openChest()">Abrir Baú (R$300)</button>
+<button class="blue" onclick="refuel()">Abastecer (R$200)</button>
 </div>
 
-<div class="card">
-<p>Custo Upgrade: R$ <span id="upgradeCost">50</span></p>
-<button class="upgrade" onclick="upgrade()">Melhorar Frota</button>
-</div>
-
-<div class="card">
-<button class="chest" onclick="openChest()">Abrir Baú Misterioso</button>
-<button onclick="dailyReward()">Recompensa Diária</button>
-</div>
-
-<div class="card">
-<button class="prestige" onclick="prestige()">Prestígio (+10%)</button>
-<button class="vip" onclick="activateVIP()">VIP Permanente</button>
-</div>
-
-</div>
+<div id="log"></div>
 
 <script>
 
-let money = 0;
-let level = 1;
-let upgradeCost = 50;
-let prestigeBonus = 1;
-let vip = false;
-let boost = 1;
+let game = JSON.parse(localStorage.getItem("freightSave")) || {
+  money:1000,
+  fuel:100,
+  level:1,
+  xp:0,
+  currentCity:"Porto Alegre"
+};
 
-function incomePerSecond(){
-    let income = 1 * Math.pow(1.15, level) * prestigeBonus;
-    if(vip) income *= 1.5;
-    return income * boost;
+const cityList = ["Porto Alegre","Canoas","Caxias do Sul","Curitiba","São Paulo"];
+
+function saveGame(){
+  localStorage.setItem("freightSave", JSON.stringify(game));
 }
 
 function updateUI(){
-    document.getElementById("money").innerText = money.toFixed(0);
-    document.getElementById("level").innerText = level;
-    document.getElementById("upgradeCost").innerText = upgradeCost.toFixed(0);
-    document.getElementById("incomePS").innerText = incomePerSecond().toFixed(1);
-    document.getElementById("prestigeBonus").innerText = prestigeBonus.toFixed(1)+"x";
+  document.getElementById("money").innerText = game.money;
+  document.getElementById("fuel").innerText = game.fuel;
+  document.getElementById("level").innerText = game.level;
+  document.getElementById("xp").innerText = game.xp;
 }
 
-function manualIncome(){
-    money += incomePerSecond()*2;
-    updateUI();
+function log(text){
+  document.getElementById("log").innerHTML += text+"<br>";
+  document.getElementById("log").scrollTop = 9999;
 }
 
-function upgrade(){
-    if(money >= upgradeCost){
-        money -= upgradeCost;
-        level++;
-        upgradeCost *= 1.25;
-        updateUI();
-        save();
-    }
+function renderCities(){
+  let container = document.getElementById("cities");
+  container.innerHTML="";
+  cityList.forEach(city=>{
+    let div = document.createElement("div");
+    div.className="city";
+    div.innerText=city;
+    div.onclick=()=>{ game.currentCity=city; log("Destino selecionado: "+city); saveGame(); }
+    container.appendChild(div);
+  });
 }
 
-function prestige(){
-    if(level >= 10){
-        money = 0;
-        level = 1;
-        upgradeCost = 50;
-        prestigeBonus += 0.1;
-        updateUI();
-        save();
-    }
+function makeDelivery(){
+  if(game.fuel < 20){
+    log("⛽ Combustível insuficiente!");
+    return;
+  }
+
+  let reward = Math.floor(Math.random()*500)+300;
+  game.money += reward;
+  game.fuel -= 20;
+  game.xp += 25;
+
+  if(game.xp >= 100){
+    game.level++;
+    game.xp = 0;
+    log("⭐ Você subiu para o nível "+game.level+"!");
+  }
+
+  log("📦 Entrega para "+game.currentCity+" concluída. +R$"+reward);
+  saveGame();
+  updateUI();
 }
 
 function openChest(){
-    let r = Math.random();
-    if(r < 0.7){
-        money += incomePerSecond()*20;
-    } else {
-        level += 1;
-    }
-    updateUI();
+  if(game.money < 300){
+    log("💀 Dinheiro insuficiente para abrir baú.");
+    return;
+  }
+
+  game.money -= 300;
+
+  if(Math.random() < 0.5){
+    let prize = Math.floor(Math.random()*1000)+200;
+    game.money += prize;
+    log("🎉 Você ganhou R$"+prize+" no baú!");
+  } else {
+    log("😢 Baú vazio!");
+  }
+
+  saveGame();
+  updateUI();
 }
 
-function dailyReward(){
-    let today = new Date().toDateString();
-    let last = localStorage.getItem("daily");
-    if(last !== today){
-        money += 500;
-        localStorage.setItem("daily", today);
-        alert("Recompensa diária recebida!");
-        updateUI();
-    } else {
-        alert("Volte amanhã!");
-    }
+function refuel(){
+  if(game.money < 200){
+    log("💀 Sem dinheiro para abastecer.");
+    return;
+  }
+
+  game.money -= 200;
+  game.fuel = 100;
+  log("⛽ Caminhão abastecido!");
+  saveGame();
+  updateUI();
 }
 
-function watchAd(){
-    boost = 2;
-    setTimeout(()=>{ boost = 1; },30000);
-}
-
-function save(){
-    localStorage.setItem("freightSave", JSON.stringify({
-        money, level, upgradeCost, prestigeBonus, vip
-    }));
-}
-
-function load(){
-    let s = JSON.parse(localStorage.getItem("freightSave"));
-    if(s){
-        money = s.money;
-        level = s.level;
-        upgradeCost = s.upgradeCost;
-        prestigeBonus = s.prestigeBonus;
-        vip = s.vip;
-    }
-}
-
-function activateVIP(){
-    vip = true;
-    updateUI();
-    save();
-}
-
-setInterval(()=>{
-    money += incomePerSecond();
-    updateUI();
-},1000);
-
-setInterval(save,5000);
-
-load();
+renderCities();
 updateUI();
 
 </script>

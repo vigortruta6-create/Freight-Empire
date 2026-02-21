@@ -9,186 +9,260 @@ index.html
 <style>
 body{
   margin:0;
-  font-family:Arial;
+  overflow:hidden;
   background:#0f172a;
+  font-family:Arial;
   color:white;
-  text-align:center;
 }
 
-header{
-  background:#1e293b;
-  padding:15px;
-  font-size:22px;
-  font-weight:bold;
+#menu, #hud{
+  position:absolute;
+  left:10px;
+  z-index:10;
 }
 
-.stats{
-  display:flex;
-  justify-content:space-around;
-  padding:10px;
-  background:#111827;
-  font-size:14px;
+#menu{
+  top:10px;
+}
+
+#hud{
+  top:10px;
+  right:10px;
+  text-align:right;
 }
 
 button{
-  padding:8px 15px;
-  margin:5px;
+  padding:8px;
+  margin:4px;
   border:none;
-  border-radius:5px;
-  cursor:pointer;
+  border-radius:6px;
   font-weight:bold;
 }
 
 .green{background:#22c55e;}
-.orange{background:#f59e0b;}
 .blue{background:#3b82f6;}
+.orange{background:#f59e0b;}
 .red{background:#ef4444;}
-
-#log{
-  margin-top:10px;
-  height:80px;
-  overflow:auto;
-  background:#111827;
-  padding:5px;
-  font-size:13px;
-}
-
-.city{
-  display:inline-block;
-  padding:8px;
-  margin:5px;
-  background:#1e293b;
-  border-radius:5px;
-  cursor:pointer;
-}
-
-.city:hover{
-  background:#334155;
-}
 </style>
 </head>
-
 <body>
 
-<header>🚛 Freight Empire Simulator PRO</header>
+<div id="menu">
+<h3>Escolha Caminhão</h3>
+<button onclick="selectTruck(1)">🚛 Leve (econômico)</button>
+<button onclick="selectTruck(2)">🚚 Médio (equilibrado)</button>
+<button onclick="selectTruck(3)">🚛 Pesado (alto consumo)</button>
 
-<div class="stats">
-<div>💰 R$ <span id="money">0</span></div>
-<div>⛽ <span id="fuel">0</span>%</div>
-<div>⭐ Nível <span id="level">1</span></div>
-<div>XP <span id="xp">0</span>/100</div>
+<h3>Escolha Região</h3>
+<select id="regionSelect">
+<option value="poa">Porto Alegre</option>
+<option value="sinos">Vale dos Sinos</option>
+<option value="paranhana">Vale do Paranhana</option>
+<option value="litoral">Litoral</option>
+<option value="curitiba">Curitiba</option>
+<option value="sp">São Paulo</option>
+</select>
+
+<h3>Tipo de Frete</h3>
+<button class="green" onclick="startFreight('fixo')">Entrega Fixa</button>
+<button class="blue" onclick="startFreight('km')">Entrega + KM</button>
 </div>
 
-<h3>Escolha destino:</h3>
-<div id="cities"></div>
-
-<div>
-<button class="green" onclick="makeDelivery()">Fazer Entrega</button>
-<button class="orange" onclick="openChest()">Abrir Baú (R$300)</button>
-<button class="blue" onclick="refuel()">Abastecer (R$200)</button>
+<div id="hud">
+💰 R$ <span id="money">0</span><br>
+⛽ Combustível: <span id="fuel">100</span>%<br>
+🚛 KM: <span id="km">0</span>
 </div>
 
-<div id="log"></div>
+<canvas id="game"></canvas>
 
 <script>
+const canvas = document.getElementById("game");
+const ctx = canvas.getContext("2d");
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
 
-let game = JSON.parse(localStorage.getItem("freightSave")) || {
-  money:1000,
-  fuel:100,
-  level:1,
-  xp:0,
-  currentCity:"Porto Alegre"
+let game = JSON.parse(localStorage.getItem("simSave")) || {
+  money:5000
 };
 
-const cityList = ["Porto Alegre","Canoas","Caxias do Sul","Curitiba","São Paulo"];
+let truckType = null;
+let freightType = null;
+let playing = false;
+let km = 0;
+let fuel = 100;
+let basePayment = 0;
+let perKm = 0;
+
+let truck = {
+  x: canvas.width/2 - 25,
+  y: canvas.height - 150,
+  w:50,
+  h:80,
+  speed:6,
+  consumption:0.05
+};
+
+let obstacle = null;
+let roadOffset = 0;
 
 function saveGame(){
-  localStorage.setItem("freightSave", JSON.stringify(game));
+  localStorage.setItem("simSave", JSON.stringify(game));
 }
 
-function updateUI(){
-  document.getElementById("money").innerText = game.money;
-  document.getElementById("fuel").innerText = game.fuel;
-  document.getElementById("level").innerText = game.level;
-  document.getElementById("xp").innerText = game.xp;
+function updateHUD(){
+  document.getElementById("money").innerText = game.money.toFixed(0);
+  document.getElementById("fuel").innerText = fuel.toFixed(0);
+  document.getElementById("km").innerText = km;
 }
 
-function log(text){
-  document.getElementById("log").innerHTML += text+"<br>";
-  document.getElementById("log").scrollTop = 9999;
+function selectTruck(type){
+  truckType = type;
+
+  if(type===1){
+    truck.speed=5;
+    truck.consumption=0.03;
+  }
+  if(type===2){
+    truck.speed=6;
+    truck.consumption=0.05;
+  }
+  if(type===3){
+    truck.speed=7;
+    truck.consumption=0.08;
+  }
+
+  alert("Caminhão selecionado!");
 }
 
-function renderCities(){
-  let container = document.getElementById("cities");
-  container.innerHTML="";
-  cityList.forEach(city=>{
-    let div = document.createElement("div");
-    div.className="city";
-    div.innerText=city;
-    div.onclick=()=>{ game.currentCity=city; log("Destino selecionado: "+city); saveGame(); }
-    container.appendChild(div);
-  });
-}
-
-function makeDelivery(){
-  if(game.fuel < 20){
-    log("⛽ Combustível insuficiente!");
+function startFreight(type){
+  if(!truckType){
+    alert("Selecione um caminhão!");
     return;
   }
 
-  let reward = Math.floor(Math.random()*500)+300;
-  game.money += reward;
-  game.fuel -= 20;
-  game.xp += 25;
+  freightType = type;
+  playing = true;
+  km = 0;
+  fuel = 100;
 
-  if(game.xp >= 100){
-    game.level++;
-    game.xp = 0;
-    log("⭐ Você subiu para o nível "+game.level+"!");
-  }
+  basePayment = Math.floor(Math.random()*800)+400;
+  perKm = Math.floor(Math.random()*5)+2;
 
-  log("📦 Entrega para "+game.currentCity+" concluída. +R$"+reward);
-  saveGame();
-  updateUI();
+  generateObstacle();
 }
 
-function openChest(){
-  if(game.money < 300){
-    log("💀 Dinheiro insuficiente para abrir baú.");
-    return;
-  }
-
-  game.money -= 300;
-
-  if(Math.random() < 0.5){
-    let prize = Math.floor(Math.random()*1000)+200;
-    game.money += prize;
-    log("🎉 Você ganhou R$"+prize+" no baú!");
-  } else {
-    log("😢 Baú vazio!");
-  }
-
-  saveGame();
-  updateUI();
+function generateObstacle(){
+  obstacle = {
+    x: Math.random()*(canvas.width/2) + canvas.width/4,
+    y: -100,
+    w:40,
+    h:40
+  };
 }
 
 function refuel(){
-  if(game.money < 200){
-    log("💀 Sem dinheiro para abastecer.");
-    return;
+  if(game.money >= 300){
+    game.money -= 300;
+    fuel = 100;
   }
-
-  game.money -= 200;
-  game.fuel = 100;
-  log("⛽ Caminhão abastecido!");
-  saveGame();
-  updateUI();
 }
 
-renderCities();
-updateUI();
+document.addEventListener("touchmove", e=>{
+  if(!playing) return;
+  let x = e.touches[0].clientX;
+  truck.x = x - truck.w/2;
 
+  if(truck.x < canvas.width/4)
+    truck.x = canvas.width/4;
+
+  if(truck.x + truck.w > canvas.width*3/4)
+    truck.x = canvas.width*3/4 - truck.w;
+});
+
+function drawRoad(){
+  ctx.fillStyle="#1e293b";
+  ctx.fillRect(canvas.width/4,0,canvas.width/2,canvas.height);
+
+  ctx.strokeStyle="white";
+  ctx.setLineDash([20,20]);
+  ctx.lineDashOffset = -roadOffset;
+  ctx.beginPath();
+  ctx.moveTo(canvas.width/2,0);
+  ctx.lineTo(canvas.width/2,canvas.height);
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+function drawTruck(){
+  ctx.fillStyle="lime";
+  ctx.fillRect(truck.x,truck.y,truck.w,truck.h);
+}
+
+function drawObstacle(){
+  ctx.fillStyle="red";
+  ctx.fillRect(obstacle.x,obstacle.y,obstacle.w,obstacle.h);
+}
+
+function checkCollision(){
+  if(
+    truck.x < obstacle.x + obstacle.w &&
+    truck.x + truck.w > obstacle.x &&
+    truck.y < obstacle.y + obstacle.h &&
+    truck.y + truck.h > obstacle.y
+  ){
+    playing = false;
+    alert("Colisão! Frete cancelado.");
+  }
+}
+
+function update(){
+  if(!playing) return;
+
+  roadOffset += truck.speed;
+  km += 1;
+  fuel -= truck.consumption;
+
+  obstacle.y += truck.speed;
+
+  if(obstacle.y > canvas.height){
+    generateObstacle();
+  }
+
+  checkCollision();
+
+  if(fuel <= 0){
+    playing = false;
+    alert("Ficou sem combustível!");
+  }
+
+  if(km >= 500){
+    playing = false;
+
+    let payment = basePayment;
+    if(freightType === "km"){
+      payment += km * perKm;
+    }
+
+    game.money += payment;
+    saveGame();
+    alert("Entrega concluída! +R$"+payment);
+  }
+
+  updateHUD();
+}
+
+function loop(){
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  drawRoad();
+  drawTruck();
+  if(obstacle) drawObstacle();
+  update();
+  requestAnimationFrame(loop);
+}
+
+updateHUD();
+loop();
 </script>
-
 </body>
 </html>
